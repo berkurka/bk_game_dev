@@ -2,7 +2,9 @@
 
 Keep Sharp is a small static math practice game. It asks short algebra, geometry, and calculus questions in the browser so you can stay in practice without an account, a build step, or a server.
 
-Pick Algebra, Geometry, Calculus, or Mixed. Each question has a tip, a short lesson with the key formula, and a link to a matching page on Paul's Online Math Notes or Math is Fun. Enter checks your answer. The game accepts equivalent forms such as `1/2` and `0.5`, `x=4` and `4`, and `9pi` and `9π`.
+Pick Algebra, Geometry, Calculus, or Mixed. Every question has four answer choices, and exactly one is correct. The choices are shuffled each time the question appears. Press 1–4 to highlight a choice, then Enter to check it. After you answer, Enter moves to the next question. You can also tap a choice and then tap Check.
+
+Each question has a tip, a short lesson with the key formula, and a link to a matching page on Paul's Online Math Notes or Math is Fun. After you answer, the correct choice is highlighted. A wrong pick stays marked, and the official answer is shown.
 
 Score, streak, and questions answered reset when you reload. Best streak and total answered are saved in `localStorage` on this device.
 
@@ -31,3 +33,11 @@ No build command is required. `index.html` is the entry point.
 ## Add a question
 
 Put a new object in the `QUESTIONS` array in `questions.js`. The fields are documented at the top of that file. Use an existing `topic` value, or add a topic id to `TOPICS` in `app.js` if you want a new button on the home screen.
+
+Give every question exactly four `choices` and set `correct` to the index of the right one before shuffling. Wrong choices should be plausible mistakes. For example:
+
+```js
+choices: ["\\(x = 4\\)", "\\(x = 8\\)", "\\(x = 10\\)", "\\(x = 7\\)"],
+correct: 0,
+displayAnswer: "\\(x = 4\\)"
+```
