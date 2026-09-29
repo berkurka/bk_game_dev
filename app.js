@@ -270,6 +270,10 @@ function renderPlay() {
         '<div class="official" id="result-yours"></div>' +
         '<p class="result-line">Official answer</p>' +
         '<div class="official" id="result-answer"></div>' +
+        '<div class="explanation" id="result-explanation" hidden>' +
+          '<p class="explanation-label">Why this is right</p>' +
+          '<div class="explanation-body" id="result-explanation-body"></div>' +
+        "</div>" +
         '<button type="button" class="primary" id="next-btn"></button>' +
       "</div>" +
       '<div class="tool-row">' +
@@ -413,9 +417,25 @@ function confirmChoice() {
   document.getElementById("result-title").textContent = correct ? "Correct" : "Not quite";
   renderRich(document.getElementById("result-yours"), picked.text);
   renderRich(document.getElementById("result-answer"), q.displayAnswer);
+  showExplanation(q, correct);
   var next = document.getElementById("next-btn");
   next.textContent = state.index === state.deck.length - 1 ? "See results" : "Next question";
   next.focus();
+}
+
+function showExplanation(q, correct) {
+  var box = document.getElementById("result-explanation");
+  var body = document.getElementById("result-explanation-body");
+  if (!box || !body) return;
+  var text = q && typeof q.explanation === "string" ? q.explanation.trim() : "";
+  box.classList.toggle("is-light", !!correct);
+  if (!text) {
+    box.hidden = true;
+    body.replaceChildren();
+    return;
+  }
+  box.hidden = false;
+  renderRich(body, text);
 }
 
 function lockChoices() {

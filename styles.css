@@ -400,6 +400,32 @@ h2 {
 
 .official { font-size: 1.2rem; }
 
+.explanation {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border-left: 3px solid var(--clay);
+  background: rgba(231, 161, 150, 0.12);
+}
+
+.explanation.is-light {
+  border-left-color: var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+.explanation-label {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.explanation.is-light .explanation-label { color: var(--muted); }
+
+.explanation-body { line-height: 1.45; }
+
 #next-btn { margin-top: 12px; }
 
 .done .eyebrow { margin-bottom: 6px; }
