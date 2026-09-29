@@ -494,7 +494,7 @@ function onKeyDown(event) {
 
   if (state.graded) {
     if (tag === "A") return;
-    if (tag === "BUTTON" && (active.id === "hint-btn" || active.id === "learn-btn" || active.id === "next-btn")) return;
+    if (tag === "BUTTON" && (active.id === "hint-btn" || active.id === "learn-btn")) return;
     event.preventDefault();
     goNext();
     return;
