@@ -1,7 +1,7 @@
 /* Keep Sharp game logic.
  *
- * questions.js must load first and define QUESTIONS. Answer checking is
- * separate from rendering so new questions only need data, not new code.
+ * questions.js must load first and define QUESTIONS. Each question carries
+ * its own choices. This file shuffles them, records the pick, and keeps score.
  */
 "use strict";
 
@@ -36,6 +36,8 @@ var state = {
   deck: [],
   index: 0,
   graded: false,
+  round: [],
+  selected: -1,
   session: { score: 0, streak: 0, answered: 0 },
   setCorrect: 0,
   setAnswered: 0
@@ -44,176 +46,7 @@ var state = {
 var lifetime = { bestStreak: 0, totalAnswered: 0 };
 
 /* ------------------------------------------------------------------ */
-/* Answer normalization                                                */
-/* ------------------------------------------------------------------ */
-
-var VULGAR_FRACTIONS = {
-  "½": "1/2", "⅓": "1/3", "⅔": "2/3", "¼": "1/4", "¾": "3/4",
-  "⅕": "1/5", "⅖": "2/5", "⅗": "3/5", "⅘": "4/5",
-  "⅙": "1/6", "⅚": "5/6", "⅛": "1/8", "⅜": "3/8", "⅝": "5/8", "⅞": "7/8"
-};
-
-function basicNormalize(raw) {
-  if (raw == null) return "";
-  var s = String(raw).trim().toLowerCase();
-  if (!s) return "";
-  s = s.replace(/[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/g, function (ch) {
-    return VULGAR_FRACTIONS[ch] || ch;
-  });
-  s = s.replace(/[−–—]/g, "-");
-  s = s.replace(/π/g, "pi");
-  s = s.replace(/[×·]/g, "*");
-  s = s.replace(/\s+/g, "");
-  s = s.replace(/\*/g, "");
-  s = s.replace(/²/g, "^2").replace(/³/g, "^3");
-  s = s.replace(/\^\{(\d+)\}/g, "^$1");
-  s = s.replace(/÷/g, "/");
-  s = s.replace(/^answer[:=]/, "").replace(/^ans[:=]/, "");
-  s = s.replace(/\.$/, "");
-  return s;
-}
-
-function stripAssignment(token) {
-  return token.replace(/^[a-z]=/, "");
-}
-
-function toNumber(token) {
-  if (!token) return null;
-  var mult = 1;
-  var body = token;
-  if (body.length >= 2 && body.slice(-2) === "pi") {
-    mult = Math.PI;
-    body = body.slice(0, -2);
-    if (body === "" || body === "+") body = "1";
-    else if (body === "-") body = "-1";
-  }
-  if (/^[+-]?\d+$/.test(body) || /^[+-]?\d*\.\d+$/.test(body)) {
-    return Number(body) * mult;
-  }
-  var frac = body.match(/^([+-]?\d+)\/([+-]?\d+)$/);
-  if (frac) {
-    var den = Number(frac[2]);
-    if (den === 0) return null;
-    return (Number(frac[1]) / den) * mult;
-  }
-  return null;
-}
-
-function nearlyEqual(a, b) {
-  if (!isFinite(a) || !isFinite(b)) return false;
-  var diff = Math.abs(a - b);
-  var scale = Math.max(Math.abs(a), Math.abs(b), 1);
-  if (diff <= 1e-9 * scale) return true;
-  var aInt = Math.abs(a - Math.round(a)) <= 1e-9;
-  var bInt = Math.abs(b - Math.round(b)) <= 1e-9;
-  if (aInt || bInt) return false;
-  return diff <= 0.0055;
-}
-
-function splitTerms(expr) {
-  var terms = [];
-  var current = "";
-  var depth = 0;
-  for (var i = 0; i < expr.length; i++) {
-    var c = expr.charAt(i);
-    if (c === "(") depth += 1;
-    else if (c === ")") depth = Math.max(0, depth - 1);
-    var boundary = (c === "+" || c === "-") && i > 0 && depth === 0 && expr.charAt(i - 1) !== "^";
-    if (boundary) {
-      terms.push(current);
-      current = c;
-    } else {
-      current += c;
-    }
-  }
-  if (current) terms.push(current);
-  return terms;
-}
-
-function canonicalTerms(expr) {
-  var parts = splitTerms(expr).filter(Boolean);
-  if (!parts.length) return "";
-  var signed = parts.map(function (term) {
-    if (term.charAt(0) === "+" || term.charAt(0) === "-") return term;
-    return "+" + term;
-  });
-  signed.sort();
-  return signed.join("");
-}
-
-function stripOuterParens(expr) {
-  var s = expr;
-  var changed = true;
-  while (changed && s.charAt(0) === "(" && s.charAt(s.length - 1) === ")") {
-    changed = false;
-    var depth = 0;
-    var wrapsAll = true;
-    for (var i = 0; i < s.length; i++) {
-      if (s.charAt(i) === "(") depth += 1;
-      else if (s.charAt(i) === ")") depth -= 1;
-      if (depth === 0 && i < s.length - 1) {
-        wrapsAll = false;
-        break;
-      }
-    }
-    if (wrapsAll && depth === 0) {
-      s = s.slice(1, -1);
-      changed = true;
-    }
-  }
-  return s;
-}
-
-function canonicalExpr(expr) {
-  var s = stripOuterParens(expr);
-  s = s.replace(/\(([^()]*)\)/g, function (_, inner) {
-    return "(" + canonicalTerms(inner) + ")";
-  });
-  var factors = s.match(/\([^()]*\)/g);
-  if (factors && factors.join("") === s && factors.length > 1) {
-    return factors.slice().sort().join("");
-  }
-  return canonicalTerms(s);
-}
-
-function answerKey(raw) {
-  var basic = basicNormalize(raw);
-  if (!basic) return null;
-  if (basic.indexOf(",") !== -1) {
-    var parts = basic.split(",").map(stripAssignment).filter(Boolean);
-    var nums = parts.map(toNumber);
-    var allNumeric = nums.every(function (n) { return n !== null; });
-    if (!allNumeric) return null;
-    return { type: "list", value: nums };
-  }
-  var single = stripAssignment(basic);
-  var num = toNumber(single);
-  if (num !== null) return { type: "num", value: num };
-  return { type: "expr", value: canonicalExpr(single) };
-}
-
-function keysEqual(a, b) {
-  if (!a || !b || a.type !== b.type) return false;
-  if (a.type === "num") return nearlyEqual(a.value, b.value);
-  if (a.type === "expr") return a.value === b.value;
-  if (a.value.length !== b.value.length) return false;
-  for (var i = 0; i < a.value.length; i++) {
-    if (!nearlyEqual(a.value[i], b.value[i])) return false;
-  }
-  return true;
-}
-
-function answersMatch(userRaw, acceptedList) {
-  var userKey = answerKey(userRaw);
-  if (!userKey || !acceptedList || !acceptedList.length) return false;
-  for (var i = 0; i < acceptedList.length; i++) {
-    if (keysEqual(userKey, answerKey(acceptedList[i]))) return true;
-  }
-  return false;
-}
-
-/* ------------------------------------------------------------------ */
-/* Storage and decks                                                   */
+/* Decks, choices, and storage                                         */
 /* ------------------------------------------------------------------ */
 
 function shuffle(list) {
@@ -270,6 +103,16 @@ function topicById(topicId) {
 
 function currentQuestion() {
   return state.deck[state.index] || null;
+}
+
+/* Build the four buttons for this viewing. correct is an index into the
+ * unshuffled choices array, so the flag has to travel with the text. */
+function prepareRound(q) {
+  var items = (q.choices || []).map(function (text, index) {
+    return { text: text, correct: index === q.correct };
+  });
+  state.round = shuffle(items);
+  state.selected = -1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -353,7 +196,7 @@ function renderHome() {
   heading.textContent = "Choose a topic";
   var lede = document.createElement("p");
   lede.className = "lede";
-  lede.textContent = "Short questions to keep algebra, geometry, and calculus within reach. A few minutes is enough.";
+  lede.textContent = "Short multiple-choice questions to keep algebra, geometry, and calculus within reach. Keys 1–4 pick a choice, and Enter checks it.";
   hero.appendChild(heading);
   hero.appendChild(lede);
 
@@ -406,6 +249,7 @@ function renderPlay() {
   }
   state.graded = false;
   state.screen = "play";
+  prepareRound(q);
   var topic = topicById(q.topic);
   var topicLabel = topic ? topic.name : q.topic;
 
@@ -417,18 +261,13 @@ function renderPlay() {
       "</div>" +
       '<p class="progress" id="progress"></p>' +
       '<div class="prompt" id="prompt"></div>' +
-      '<form id="answer-form">' +
-        '<label for="answer-input">Your answer</label>' +
-        '<div class="answer-row">' +
-          '<input id="answer-input" name="answer" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">' +
-          '<button type="submit" class="primary" id="submit-btn">Check</button>' +
-        "</div>" +
-        '<p class="format-note">Enter checks your answer. Fractions like 1/2, powers like 2x^3, and pi are all fine.</p>' +
-        '<p class="form-error" id="form-error" hidden></p>' +
-      "</form>" +
+      '<div class="choices" id="choices" role="group" aria-label="Answer choices"></div>' +
+      '<p class="format-note" id="choice-note">Press 1–4 to pick a choice, then Enter to check.</p>' +
+      '<button type="button" class="primary" id="check-btn" disabled>Check</button>' +
       '<div id="result" class="result" hidden role="status">' +
         '<p class="result-title" id="result-title"></p>' +
-        '<p class="result-line"><span>Your answer</span> <strong id="result-yours"></strong></p>' +
+        '<p class="result-line">Your answer</p>' +
+        '<div class="official" id="result-yours"></div>' +
         '<p class="result-line">Official answer</p>' +
         '<div class="official" id="result-answer"></div>' +
         '<button type="button" class="primary" id="next-btn"></button>' +
@@ -451,6 +290,7 @@ function renderPlay() {
   document.getElementById("difficulty-pill").textContent = q.difficulty;
   document.getElementById("progress").textContent = "Question " + (state.index + 1) + " of " + state.deck.length;
   renderRich(document.getElementById("prompt"), q.prompt);
+  renderChoices();
   document.getElementById("hint").textContent = q.hint;
   document.getElementById("learn-lesson").textContent = q.lesson;
   renderRich(document.getElementById("learn-formula"), q.formula);
@@ -458,14 +298,55 @@ function renderPlay() {
   link.href = q.learnUrl;
   link.textContent = q.learnLabel;
 
-  var input = document.getElementById("answer-input");
-  input.placeholder = "e.g. 1/2 or 2x^3";
-  document.getElementById("answer-form").addEventListener("submit", onSubmit);
+  document.getElementById("check-btn").addEventListener("click", confirmChoice);
   document.getElementById("hint-btn").addEventListener("click", showHint);
   document.getElementById("learn-btn").addEventListener("click", toggleLearn);
   document.getElementById("next-btn").addEventListener("click", goNext);
-  input.focus();
   updateStats();
+}
+
+function renderChoices() {
+  var group = document.getElementById("choices");
+  group.replaceChildren();
+  state.round.forEach(function (item, index) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "choice";
+    btn.setAttribute("data-index", String(index));
+    btn.setAttribute("aria-pressed", "false");
+    var key = document.createElement("span");
+    key.className = "choice-key";
+    key.textContent = String(index + 1);
+    var body = document.createElement("span");
+    body.className = "choice-body";
+    renderRich(body, item.text);
+    var tag = document.createElement("span");
+    tag.className = "choice-tag";
+    btn.appendChild(key);
+    btn.appendChild(body);
+    btn.appendChild(tag);
+    btn.addEventListener("click", function () { selectChoice(index); });
+    group.appendChild(btn);
+  });
+}
+
+function selectChoice(index) {
+  if (state.screen !== "play" || state.graded) return;
+  if (index < 0 || index >= state.round.length) return;
+  state.selected = index;
+  var buttons = document.querySelectorAll(".choice");
+  for (var i = 0; i < buttons.length; i++) {
+    var on = i === index;
+    buttons[i].classList.toggle("is-selected", on);
+    buttons[i].setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  var check = document.getElementById("check-btn");
+  if (check) check.disabled = false;
+  var note = document.getElementById("choice-note");
+  if (note && note.classList.contains("form-error")) {
+    note.classList.remove("form-error");
+    note.textContent = "Press 1–4 to pick a choice, then Enter to check.";
+  }
 }
 
 function showHint() {
@@ -487,25 +368,20 @@ function toggleLearn() {
   btn.textContent = open ? "Hide learn" : "Learn";
 }
 
-function onSubmit(event) {
-  if (event) event.preventDefault();
-  if (state.screen !== "play") return;
-  if (state.graded) {
-    goNext();
+function confirmChoice() {
+  if (state.screen !== "play" || state.graded) return;
+  var note = document.getElementById("choice-note");
+  if (state.selected < 0) {
+    if (note) {
+      note.classList.add("form-error");
+      note.textContent = "Pick a choice first.";
+    }
     return;
   }
   var q = currentQuestion();
-  var input = document.getElementById("answer-input");
-  var error = document.getElementById("form-error");
-  if (!q || !input) return;
-  if (!input.value.trim()) {
-    error.hidden = false;
-    error.textContent = "Enter an answer first.";
-    input.focus();
-    return;
-  }
-  error.hidden = true;
-  var correct = answersMatch(input.value, q.answers);
+  var picked = state.round[state.selected];
+  if (!q || !picked) return;
+  var correct = !!picked.correct;
   state.graded = true;
   state.session.answered += 1;
   state.setAnswered += 1;
@@ -522,21 +398,41 @@ function onSubmit(event) {
   }
   saveLifetime(lifetime);
   updateStats();
+  lockChoices();
 
-  input.disabled = true;
-  document.getElementById("submit-btn").disabled = true;
+  var check = document.getElementById("check-btn");
+  if (check) check.hidden = true;
+  if (note) {
+    note.classList.remove("form-error");
+    note.textContent = "Press Enter for the next question.";
+  }
   var result = document.getElementById("result");
   result.hidden = false;
   result.classList.toggle("correct", correct);
   result.classList.toggle("incorrect", !correct);
   document.getElementById("result-title").textContent = correct ? "Correct" : "Not quite";
-  document.getElementById("result-yours").textContent = input.value.trim();
+  renderRich(document.getElementById("result-yours"), picked.text);
   renderRich(document.getElementById("result-answer"), q.displayAnswer);
   var next = document.getElementById("next-btn");
   next.textContent = state.index === state.deck.length - 1 ? "See results" : "Next question";
   next.focus();
-  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  result.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+}
+
+function lockChoices() {
+  var buttons = document.querySelectorAll(".choice");
+  for (var i = 0; i < buttons.length; i++) {
+    var item = state.round[i];
+    var tag = buttons[i].querySelector(".choice-tag");
+    buttons[i].disabled = true;
+    buttons[i].classList.remove("is-selected");
+    if (item && item.correct) {
+      buttons[i].classList.add("is-correct");
+      if (tag) tag.textContent = "Correct";
+    } else if (i === state.selected) {
+      buttons[i].classList.add("is-wrong");
+      if (tag) tag.textContent = "Your pick";
+    }
+  }
 }
 
 function goNext() {
@@ -575,14 +471,48 @@ function renderDone() {
   updateStats();
 }
 
+function choiceIndexFromKey(key) {
+  if (key === "1" || key === "2" || key === "3" || key === "4") return Number(key) - 1;
+  return -1;
+}
+
 function onKeyDown(event) {
-  if (event.key !== "Enter" || state.screen !== "play") return;
+  if (state.screen !== "play") return;
   var active = document.activeElement;
   var tag = active && active.tagName;
-  if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "TEXTAREA") return;
-  if (active && active.closest && active.closest("form")) return;
-  if (state.graded) goNext();
-  else onSubmit();
+  var choiceIndex = choiceIndexFromKey(event.key);
+
+  if (choiceIndex !== -1) {
+    if (state.graded) return;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    event.preventDefault();
+    selectChoice(choiceIndex);
+    return;
+  }
+
+  if (event.key !== "Enter") return;
+
+  if (state.graded) {
+    if (tag === "A") return;
+    if (tag === "BUTTON" && (active.id === "hint-btn" || active.id === "learn-btn" || active.id === "next-btn")) return;
+    event.preventDefault();
+    goNext();
+    return;
+  }
+
+  if (tag === "BUTTON" && (active.id === "hint-btn" || active.id === "learn-btn")) return;
+  if (active && active.id === "check-btn") return;
+
+  if (active && active.classList && active.classList.contains("choice")) {
+    var idx = Number(active.getAttribute("data-index"));
+    event.preventDefault();
+    if (state.selected !== idx) selectChoice(idx);
+    else confirmChoice();
+    return;
+  }
+
+  event.preventDefault();
+  confirmChoice();
 }
 
 function init() {
