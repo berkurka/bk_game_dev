@@ -4,7 +4,7 @@ Keep Sharp is a small static math practice game. It asks short algebra, geometry
 
 Pick Algebra, Geometry, Calculus, or Mixed. Every question has four answer choices, and exactly one is correct. The choices are shuffled each time the question appears. Press 1–4 to highlight a choice, then Enter to check it. After you answer, Enter moves to the next question. You can also tap a choice and then tap Check.
 
-Each question has a tip, a short lesson with the key formula, and a link to a matching page on Paul's Online Math Notes or Math is Fun. After you answer, the correct choice is highlighted. A wrong pick stays marked, and the official answer is shown.
+Each question has a tip, a short lesson with the key formula, and a link to a matching page on Paul's Online Math Notes or Math is Fun. After you answer, the correct choice is highlighted. A wrong pick stays marked, and the official answer is shown. Under that answer, a short explanation says why the correct choice is right. The same note appears in a lighter style after a correct pick. If a question has no `explanation`, that note stays hidden.
 
 Score, streak, and questions answered reset when you reload. Best streak and total answered are saved in `localStorage` on this device.
 
@@ -34,10 +34,11 @@ No build command is required. `index.html` is the entry point.
 
 Put a new object in the `QUESTIONS` array in `questions.js`. The fields are documented at the top of that file. Use an existing `topic` value, or add a topic id to `TOPICS` in `app.js` if you want a new button on the home screen.
 
-Give every question exactly four `choices` and set `correct` to the index of the right one before shuffling. Wrong choices should be plausible mistakes. For example:
+Give every question exactly four `choices` and set `correct` to the index of the right one before shuffling. Wrong choices should be plausible mistakes. Add an `explanation`: one to three plain sentences that show the key step, with optional `\( inline \)` KaTeX. Leave the field out, or set it to a blank string, and the game shows nothing after the official answer. For example:
 
 ```js
 choices: ["\\(x = 4\\)", "\\(x = 8\\)", "\\(x = 10\\)", "\\(x = 7\\)"],
 correct: 0,
-displayAnswer: "\\(x = 4\\)"
+displayAnswer: "\\(x = 4\\)",
+explanation: "Subtract 6 from both sides: \\(2x = 8\\). Divide by 2 to get \\(x = 4\\)."
 ```
