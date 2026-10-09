@@ -11,7 +11,7 @@ var TOPICS = [
   {
     id: "algebra",
     name: "Algebra",
-    blurb: "Linear equations, factoring, slope, exponents, and logs."
+    blurb: "Equations, systems, factoring, exponents, inequalities, and word problems."
   },
   {
     id: "geometry",
@@ -27,11 +27,19 @@ var TOPICS = [
     id: "mixed",
     name: "Mixed",
     blurb: "A shuffle of all three, for a short mixed review."
+  },
+  {
+    id: "gmat",
+    name: "GMAT Quant",
+    blurb: "Original GMAT-style problem solving and data sufficiency. These are not official questions."
   }
 ];
 
+var PRACTICE_TOPICS = ["algebra", "geometry", "calculus"];
+
 var state = {
   screen: "home",
+  mode: "topic",
   topicId: null,
   deck: [],
   index: 0,
@@ -40,10 +48,15 @@ var state = {
   selected: -1,
   session: { score: 0, streak: 0, answered: 0 },
   setCorrect: 0,
-  setAnswered: 0
+  setAnswered: 0,
+  challengeStart: 0,
+  challengeMs: null,
+  challengeRecorded: false,
+  challengeIsBest: false,
+  timerId: null
 };
 
-var lifetime = { bestStreak: 0, totalAnswered: 0 };
+var lifetime = { bestStreak: 0, totalAnswered: 0, bestChallengeMs: null };
 
 /* ------------------------------------------------------------------ */
 /* Decks, choices, and storage                                         */
@@ -61,16 +74,18 @@ function shuffle(list) {
 }
 
 function loadLifetime() {
-  var empty = { bestStreak: 0, totalAnswered: 0 };
+  var empty = { bestStreak: 0, totalAnswered: 0, bestChallengeMs: null };
   try {
     var raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return empty;
     var data = JSON.parse(raw);
     var best = Number(data.bestStreak);
     var total = Number(data.totalAnswered);
+    var challenge = Number(data.bestChallengeMs);
     return {
       bestStreak: isFinite(best) && best > 0 ? Math.floor(best) : 0,
-      totalAnswered: isFinite(total) && total > 0 ? Math.floor(total) : 0
+      totalAnswered: isFinite(total) && total > 0 ? Math.floor(total) : 0,
+      bestChallengeMs: isFinite(challenge) && challenge >= 0 ? Math.round(challenge) : null
     };
   } catch (err) {
     return empty;
@@ -79,19 +94,116 @@ function loadLifetime() {
 
 function saveLifetime(data) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    var payload = {
       bestStreak: data.bestStreak,
       totalAnswered: data.totalAnswered
-    }));
+    };
+    if (data.bestChallengeMs != null && isFinite(data.bestChallengeMs) && data.bestChallengeMs >= 0) {
+      payload.bestChallengeMs = Math.round(data.bestChallengeMs);
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
     /* Private mode can block storage. The session still runs. */
   }
 }
 
+function isPracticeTopic(topic) {
+  return PRACTICE_TOPICS.indexOf(topic) !== -1;
+}
+
 function questionsForTopic(topicId) {
   if (typeof QUESTIONS === "undefined") return [];
-  if (topicId === "mixed") return QUESTIONS.slice();
+  if (topicId === "mixed") {
+    return QUESTIONS.filter(function (q) { return isPracticeTopic(q.topic); });
+  }
   return QUESTIONS.filter(function (q) { return q.topic === topicId; });
+}
+
+/* Two easy and two medium questions from algebra, geometry, and calculus.
+ * Hard items and the GMAT set stay out of the timed challenge. */
+function sampleChallengeDeck(list) {
+  var pool = (list || []).filter(function (q) { return isPracticeTopic(q.topic); });
+  var easy = shuffle(pool.filter(function (q) { return q.difficulty === "easy"; }));
+  var medium = shuffle(pool.filter(function (q) { return q.difficulty === "medium"; }));
+  if (easy.length < 2 || medium.length < 2) return [];
+  return shuffle(easy.slice(0, 2).concat(medium.slice(0, 2)));
+}
+
+function formatDuration(ms) {
+  var safe = Math.round(Number(ms));
+  if (!isFinite(safe) || safe < 0) safe = 0;
+  var tenthsTotal = Math.round(safe / 100);
+  var tenths = tenthsTotal % 10;
+  var totalSeconds = Math.floor(tenthsTotal / 10);
+  var seconds = totalSeconds % 60;
+  var minutes = Math.floor(totalSeconds / 60);
+  var secText = (seconds < 10 ? "0" : "") + seconds;
+  return minutes + ":" + secText + "." + tenths;
+}
+
+function challengeElapsedMs() {
+  if (state.challengeMs != null) return state.challengeMs;
+  if (!state.challengeStart) return 0;
+  return Date.now() - state.challengeStart;
+}
+
+function paintChallengeTimer() {
+  var el = document.getElementById("challenge-timer");
+  if (!el) return;
+  var text = formatDuration(challengeElapsedMs());
+  el.textContent = text;
+  el.setAttribute("aria-label", "Elapsed time " + text);
+}
+
+function stopChallengeClock(freeze) {
+  if (freeze && state.mode === "challenge" && state.challengeStart && state.challengeMs == null) {
+    state.challengeMs = Date.now() - state.challengeStart;
+  }
+  if (state.timerId) {
+    clearInterval(state.timerId);
+    state.timerId = null;
+  }
+  if (freeze) paintChallengeTimer();
+}
+
+function startChallengeClock() {
+  if (state.timerId) {
+    clearInterval(state.timerId);
+    state.timerId = null;
+  }
+  state.challengeStart = Date.now();
+  state.challengeMs = null;
+  state.challengeRecorded = false;
+  state.challengeIsBest = false;
+  state.timerId = setInterval(paintChallengeTimer, 100);
+}
+
+function recordChallengeResult() {
+  if (state.mode !== "challenge" || state.challengeRecorded) return;
+  if (state.challengeMs == null) return;
+  state.challengeRecorded = true;
+  var elapsed = Math.round(state.challengeMs);
+  state.challengeMs = elapsed;
+  var previous = lifetime.bestChallengeMs;
+  if (previous == null || elapsed < previous) {
+    lifetime.bestChallengeMs = elapsed;
+    state.challengeIsBest = true;
+    saveLifetime(lifetime);
+  } else {
+    state.challengeIsBest = false;
+  }
+}
+
+function choiceHelpText() {
+  if (state.round.length > 4) {
+    return "Press A–E or 1–5 to pick a choice, then Enter to check.";
+  }
+  return "Press 1–4 to pick a choice, then Enter to check.";
+}
+
+function choiceKeyLabel(index) {
+  if (state.round.length > 4) return "ABCDE".charAt(index);
+  return String(index + 1);
 }
 
 function topicById(topicId) {
@@ -111,7 +223,7 @@ function prepareRound(q) {
   var items = (q.choices || []).map(function (text, index) {
     return { text: text, correct: index === q.correct };
   });
-  state.round = shuffle(items);
+  state.round = q.shuffle === false ? items : shuffle(items);
   state.selected = -1;
 }
 
@@ -175,6 +287,7 @@ function updateStats() {
       '<span class="group-label">Saved</span>' +
       '<span class="stat"><span class="stat-value" id="stat-best"></span><span class="stat-label">best streak</span></span>' +
       '<span class="stat"><span class="stat-value" id="stat-total"></span><span class="stat-label">total</span></span>' +
+      '<span class="stat"><span class="stat-value" id="stat-challenge"></span><span class="stat-label">best time</span></span>' +
     "</div>";
   document.getElementById("stat-score").textContent = String(state.session.score);
   var streakEl = document.getElementById("stat-streak");
@@ -183,10 +296,47 @@ function updateStats() {
   document.getElementById("stat-answered").textContent = String(state.session.answered);
   document.getElementById("stat-best").textContent = String(lifetime.bestStreak);
   document.getElementById("stat-total").textContent = String(lifetime.totalAnswered);
+  document.getElementById("stat-challenge").textContent = lifetime.bestChallengeMs == null
+    ? "–"
+    : formatDuration(lifetime.bestChallengeMs);
+}
+
+function renderChallengePanel() {
+  var section = document.createElement("section");
+  section.className = "challenge-card";
+  section.id = "challenge-panel";
+  var kicker = document.createElement("p");
+  kicker.className = "eyebrow";
+  kicker.textContent = "Timed mode";
+  var heading = document.createElement("h2");
+  heading.id = "challenge-heading";
+  heading.textContent = "Challenge";
+  var lede = document.createElement("p");
+  lede.className = "lede";
+  lede.textContent = "Two easy questions and two medium ones, drawn at random from algebra, geometry, and calculus. The clock starts right away and stops when you check the last answer.";
+  var best = document.createElement("p");
+  best.className = "challenge-best";
+  best.textContent = lifetime.bestChallengeMs == null
+    ? "No best time yet."
+    : "Best time: " + formatDuration(lifetime.bestChallengeMs);
+  var btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "primary";
+  btn.id = "challenge-btn";
+  btn.textContent = "Start challenge";
+  btn.addEventListener("click", startChallenge);
+  section.appendChild(kicker);
+  section.appendChild(heading);
+  section.appendChild(lede);
+  section.appendChild(best);
+  section.appendChild(btn);
+  return section;
 }
 
 function renderHome() {
+  stopChallengeClock(false);
   state.screen = "home";
+  state.mode = "topic";
   var view = document.getElementById("view");
   view.innerHTML = "";
 
@@ -196,7 +346,7 @@ function renderHome() {
   heading.textContent = "Choose a topic";
   var lede = document.createElement("p");
   lede.className = "lede";
-  lede.textContent = "Short multiple-choice questions to keep algebra, geometry, and calculus within reach. Keys 1–4 pick a choice, and Enter checks it.";
+  lede.textContent = "Short multiple-choice questions for algebra, geometry, calculus, and GMAT-style quant. Keys 1–4 pick a choice (A–E or 1–5 when there are five), and Enter checks it.";
   hero.appendChild(heading);
   hero.appendChild(lede);
 
@@ -225,18 +375,38 @@ function renderHome() {
 
   view.appendChild(hero);
   view.appendChild(grid);
+  view.appendChild(renderChallengePanel());
   updateStats();
 }
 
 function startTopic(topicId) {
   var deck = questionsForTopic(topicId);
   if (!deck.length) return;
+  stopChallengeClock(false);
+  state.mode = "topic";
+  state.challengeMs = null;
+  state.challengeStart = 0;
+  state.challengeRecorded = false;
   state.screen = "play";
   state.topicId = topicId;
   state.deck = shuffle(deck);
   state.index = 0;
   state.setCorrect = 0;
   state.setAnswered = 0;
+  renderPlay();
+}
+
+function startChallenge() {
+  var deck = sampleChallengeDeck(typeof QUESTIONS === "undefined" ? [] : QUESTIONS);
+  if (deck.length !== 4) return;
+  state.mode = "challenge";
+  state.topicId = "challenge";
+  state.deck = deck;
+  state.index = 0;
+  state.setCorrect = 0;
+  state.setAnswered = 0;
+  state.screen = "play";
+  startChallengeClock();
   renderPlay();
 }
 
@@ -254,10 +424,13 @@ function renderPlay() {
   var topicLabel = topic ? topic.name : q.topic;
 
   view.innerHTML =
-    '<article class="card">' +
+    '<article class="card' + (state.mode === "challenge" ? " is-challenge" : "") + '">' +
       '<div class="meta-row">' +
         '<h2 id="question-heading"></h2>' +
-        '<span class="pill" id="difficulty-pill"></span>' +
+        '<div class="meta-side">' +
+          (state.mode === "challenge" ? '<span class="timer" id="challenge-timer">0:00.0</span>' : "") +
+          '<span class="pill" id="difficulty-pill"></span>' +
+        "</div>" +
       "</div>" +
       '<p class="progress" id="progress"></p>' +
       '<div class="prompt" id="prompt"></div>' +
@@ -290,9 +463,17 @@ function renderPlay() {
       "</section>" +
     "</article>";
 
+  var card = view.querySelector(".card");
+  if (card) card.setAttribute("data-question-id", q.id);
   document.getElementById("question-heading").textContent = topicLabel;
-  document.getElementById("difficulty-pill").textContent = q.difficulty;
-  document.getElementById("progress").textContent = "Question " + (state.index + 1) + " of " + state.deck.length;
+  var pill = document.getElementById("difficulty-pill");
+  pill.textContent = q.difficulty;
+  pill.setAttribute("data-level", q.difficulty);
+  document.getElementById("progress").textContent = state.mode === "challenge"
+    ? "Challenge, question " + (state.index + 1) + " of " + state.deck.length
+    : "Question " + (state.index + 1) + " of " + state.deck.length;
+  var choiceNote = document.getElementById("choice-note");
+  if (choiceNote) choiceNote.textContent = choiceHelpText();
   renderRich(document.getElementById("prompt"), q.prompt);
   renderChoices();
   document.getElementById("hint").textContent = q.hint;
@@ -306,6 +487,7 @@ function renderPlay() {
   document.getElementById("hint-btn").addEventListener("click", showHint);
   document.getElementById("learn-btn").addEventListener("click", toggleLearn);
   document.getElementById("next-btn").addEventListener("click", goNext);
+  if (state.mode === "challenge") paintChallengeTimer();
   updateStats();
 }
 
@@ -320,7 +502,7 @@ function renderChoices() {
     btn.setAttribute("aria-pressed", "false");
     var key = document.createElement("span");
     key.className = "choice-key";
-    key.textContent = String(index + 1);
+    key.textContent = choiceKeyLabel(index);
     var body = document.createElement("span");
     body.className = "choice-body";
     renderRich(body, item.text);
@@ -349,7 +531,7 @@ function selectChoice(index) {
   var note = document.getElementById("choice-note");
   if (note && note.classList.contains("form-error")) {
     note.classList.remove("form-error");
-    note.textContent = "Press 1–4 to pick a choice, then Enter to check.";
+    note.textContent = choiceHelpText();
   }
 }
 
@@ -401,6 +583,10 @@ function confirmChoice() {
     state.session.streak = 0;
   }
   saveLifetime(lifetime);
+  if (state.mode === "challenge" && state.index === state.deck.length - 1) {
+    stopChallengeClock(true);
+    recordChallengeResult();
+  }
   updateStats();
   lockChoices();
 
@@ -467,33 +653,60 @@ function goNext() {
 }
 
 function renderDone() {
+  stopChallengeClock(false);
   state.screen = "done";
+  var challenge = state.mode === "challenge";
   var topic = topicById(state.topicId);
-  var name = topic ? topic.name : "This";
+  var name = challenge ? "Challenge" : (topic ? topic.name : "This");
   var view = document.getElementById("view");
   view.innerHTML =
     '<section class="card done">' +
       '<p class="eyebrow" id="done-kicker"></p>' +
-      '<h2>Set complete</h2>' +
+      '<h2 id="done-heading">Set complete</h2>' +
       '<p class="lede" id="done-copy"></p>' +
+      '<p class="time-result" id="done-time" hidden></p>' +
       '<div class="tool-row">' +
         '<button type="button" class="primary" id="again-btn">Practice again</button>' +
         '<button type="button" class="ghost" id="done-home">All topics</button>' +
       "</div>" +
     "</section>";
   document.getElementById("done-kicker").textContent = name;
-  document.getElementById("done-copy").textContent =
-    "You got " + state.setCorrect + " of " + state.setAnswered + " correct in this " + name.toLowerCase() + " set.";
+  var setLabel = name.toLowerCase();
+  if (state.topicId === "gmat") setLabel = "GMAT quant";
+  if (challenge) {
+    document.getElementById("done-heading").textContent = "Challenge complete";
+    document.getElementById("done-copy").textContent =
+      "You got " + state.setCorrect + " of " + state.setAnswered + " correct.";
+    var timeEl = document.getElementById("done-time");
+    timeEl.hidden = false;
+    var timeText = "Total time " + formatDuration(state.challengeMs) + ".";
+    if (state.challengeIsBest) timeText += " New best time.";
+    else if (lifetime.bestChallengeMs != null) {
+      timeText += " Best time " + formatDuration(lifetime.bestChallengeMs) + ".";
+    }
+    timeEl.textContent = timeText;
+    document.getElementById("again-btn").textContent = "New challenge";
+  } else {
+    document.getElementById("done-copy").textContent =
+      "You got " + state.setCorrect + " of " + state.setAnswered + " correct in this " + setLabel + " set.";
+  }
   document.getElementById("again-btn").addEventListener("click", function () {
-    startTopic(state.topicId);
+    if (state.mode === "challenge") startChallenge();
+    else startTopic(state.topicId);
   });
   document.getElementById("done-home").addEventListener("click", renderHome);
   updateStats();
 }
 
 function choiceIndexFromKey(key) {
-  if (key === "1" || key === "2" || key === "3" || key === "4") return Number(key) - 1;
-  return -1;
+  var index = -1;
+  if (key === "1" || key === "2" || key === "3" || key === "4" || key === "5") {
+    index = Number(key) - 1;
+  } else if (state.round.length > 4 && key.length === 1) {
+    index = "abcde".indexOf(key.toLowerCase());
+  }
+  if (index < 0 || index >= state.round.length) return -1;
+  return index;
 }
 
 function onKeyDown(event) {
@@ -505,6 +718,7 @@ function onKeyDown(event) {
   if (choiceIndex !== -1) {
     if (state.graded) return;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (/^[a-e]$/i.test(event.key) && (event.metaKey || event.ctrlKey || event.altKey)) return;
     event.preventDefault();
     selectChoice(choiceIndex);
     return;
