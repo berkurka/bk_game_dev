@@ -2,11 +2,15 @@
 
 Keep Sharp is a small static math practice game. It asks short algebra, geometry, and calculus questions in the browser so you can stay in practice without an account, a build step, or a server.
 
-Pick Algebra, Geometry, Calculus, or Mixed. Every question has four answer choices, and exactly one is correct. The choices are shuffled each time the question appears. Press 1–4 to highlight a choice, then Enter to check it. After you answer, Enter moves to the next question. You can also tap a choice and then tap Check.
+Pick Algebra, Geometry, Calculus, Mixed, or GMAT Quant. Practice questions have four answer choices. GMAT Quant questions have five, labeled A–E. Exactly one choice is correct. Choices are shuffled each time a question appears, except data-sufficiency items, which keep the standard A–E order. Press 1–4 to highlight a choice (A–E or 1–5 when there are five), then Enter to check it. After you answer, Enter moves to the next question. You can also tap a choice and then tap Check.
+
+Challenge mode, on the home screen, deals two easy and two medium questions at random from algebra, geometry, and calculus. A timer starts with the first question and stops when you check the fourth. The results show how many you got right and the total time.
 
 Each question has a tip, a short lesson with the key formula, and a link to a matching page on Paul's Online Math Notes or Math is Fun. After you answer, the correct choice is highlighted. A wrong pick stays marked, and the official answer is shown. Under that answer, a short explanation says why the correct choice is right. The same note appears in a lighter style after a correct pick. If a question has no `explanation`, that note stays hidden.
 
-Score, streak, and questions answered reset when you reload. Best streak and total answered are saved in `localStorage` on this device.
+Score, streak, and questions answered reset when you reload. Best streak, total answered, and best challenge time are saved in `localStorage` on this device. Hard questions stay in the topic sets; the timed challenge uses easy and medium only.
+
+GMAT Quant is original practice in the style of the GMAT quantitative section, not an official set of questions. It mixes problem solving with a few data-sufficiency items, across easy, medium, and hard.
 
 ## Run locally
 
@@ -34,7 +38,7 @@ No build command is required. `index.html` is the entry point.
 
 Put a new object in the `QUESTIONS` array in `questions.js`. The fields are documented at the top of that file. Use an existing `topic` value, or add a topic id to `TOPICS` in `app.js` if you want a new button on the home screen.
 
-Give every question exactly four `choices` and set `correct` to the index of the right one before shuffling. Wrong choices should be plausible mistakes. Add an `explanation`: one to three plain sentences that show the key step, with optional `\( inline \)` KaTeX. Leave the field out, or set it to a blank string, and the game shows nothing after the official answer. For example:
+Give every practice question exactly four `choices`, or five for a GMAT-style question, and set `correct` to the index of the right one before shuffling. Set `shuffle` to `false` only when the choice order itself carries meaning, as it does for data sufficiency. `difficulty` may be `easy`, `medium`, or `hard`. Wrong choices should be plausible mistakes. Add an `explanation`: one to three plain sentences that show the key step, with optional `\( inline \)` KaTeX. Leave the field out, or set it to a blank string, and the game shows nothing after the official answer. For example:
 
 ```js
 choices: ["\\(x = 4\\)", "\\(x = 8\\)", "\\(x = 10\\)", "\\(x = 7\\)"],

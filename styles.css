@@ -183,9 +183,24 @@ h2 {
 
 .meta-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.meta-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 1.15rem;
+  color: var(--brass);
+  letter-spacing: 0.02em;
 }
 
 .progress {
@@ -202,6 +217,11 @@ h2 {
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.pill[data-level="hard"] {
+  color: var(--clay);
+  border-color: rgba(231, 161, 150, 0.65);
 }
 
 .prompt {
@@ -251,6 +271,7 @@ h2 {
   flex: 1;
   min-width: 0;
   font-size: 1.05rem;
+  overflow-wrap: break-word;
 }
 
 .choice-tag {
@@ -429,6 +450,36 @@ h2 {
 #next-btn { margin-top: 12px; }
 
 .done .eyebrow { margin-bottom: 6px; }
+
+.time-result {
+  margin: 14px 0 0;
+  font-family: var(--serif);
+  font-size: 1.65rem;
+  line-height: 1.3;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.card.is-challenge {
+  box-shadow: inset 0 3px 0 var(--brass), 0 16px 40px rgba(0, 0, 0, 0.22);
+}
+
+.challenge-card {
+  margin-top: 16px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px 18px 18px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+.challenge-card h2 { font-size: 1.45rem; }
+
+.challenge-best {
+  margin: 10px 0 14px;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
 
 footer {
   margin-top: 28px;
