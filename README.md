@@ -10,7 +10,7 @@ Each question has a tip, a short lesson with the key formula, and a link to a ma
 
 Score, streak, and questions answered reset when you reload. Best streak, total answered, and best challenge time are saved in `localStorage` on this device. Hard questions stay in the topic sets; the timed challenge uses easy and medium only.
 
-GMAT Quant is original practice in the style of the GMAT quantitative section, not an official set of questions. It mixes problem solving with a few data-sufficiency items, across easy, medium, and hard.
+GMAT Quant is practice in the style of the GMAT quantitative section, not an official set of questions. The original items mix problem solving with a few data-sufficiency items, across easy, medium, and hard. Twenty more were adapted from MathQA and edited for this game. Those items keep their difficulty and topic, and they are credited in [ATTRIBUTION.md](ATTRIBUTION.md).
 
 ## Run locally
 

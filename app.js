@@ -31,7 +31,7 @@ var TOPICS = [
   {
     id: "gmat",
     name: "GMAT Quant",
-    blurb: "Original GMAT-style problem solving and data sufficiency. These are not official questions."
+    blurb: "GMAT-style problem solving and data sufficiency, some adapted from MathQA. These are not official questions."
   }
 ];
 
@@ -111,11 +111,16 @@ function isPracticeTopic(topic) {
   return PRACTICE_TOPICS.indexOf(topic) !== -1;
 }
 
+function isGmatQuestion(q) {
+  return q.topic === "gmat" || q.source === "MathQA (Apache-2.0)";
+}
+
 function questionsForTopic(topicId) {
   if (typeof QUESTIONS === "undefined") return [];
   if (topicId === "mixed") {
     return QUESTIONS.filter(function (q) { return isPracticeTopic(q.topic); });
   }
+  if (topicId === "gmat") return QUESTIONS.filter(isGmatQuestion);
   return QUESTIONS.filter(function (q) { return q.topic === topicId; });
 }
 
