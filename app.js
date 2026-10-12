@@ -49,6 +49,7 @@ var state = {
   session: { score: 0, streak: 0, answered: 0 },
   setCorrect: 0,
   setAnswered: 0,
+  setSkipped: 0,
   challengeStart: 0,
   challengeMs: null,
   challengeRecorded: false,
@@ -398,6 +399,7 @@ function startTopic(topicId) {
   state.index = 0;
   state.setCorrect = 0;
   state.setAnswered = 0;
+  state.setSkipped = 0;
   renderPlay();
 }
 
@@ -410,6 +412,7 @@ function startChallenge() {
   state.index = 0;
   state.setCorrect = 0;
   state.setAnswered = 0;
+  state.setSkipped = 0;
   state.screen = "play";
   startChallengeClock();
   renderPlay();
@@ -441,7 +444,10 @@ function renderPlay() {
       '<div class="prompt" id="prompt"></div>' +
       '<div class="choices" id="choices" role="group" aria-label="Answer choices"></div>' +
       '<p class="format-note" id="choice-note">Press 1–4 to pick a choice, then Enter to check.</p>' +
-      '<button type="button" class="primary" id="check-btn" disabled>Check</button>' +
+      '<div class="action-row" id="action-row">' +
+        '<button type="button" class="primary" id="check-btn" disabled>Check</button>' +
+        '<button type="button" class="ghost" id="skip-btn">Skip</button>' +
+      "</div>" +
       '<div id="result" class="result" hidden role="status">' +
         '<p class="result-title" id="result-title"></p>' +
         '<p class="result-line">Your answer</p>' +
@@ -489,6 +495,7 @@ function renderPlay() {
   link.textContent = q.learnLabel;
 
   document.getElementById("check-btn").addEventListener("click", confirmChoice);
+  document.getElementById("skip-btn").addEventListener("click", skipQuestion);
   document.getElementById("hint-btn").addEventListener("click", showHint);
   document.getElementById("learn-btn").addEventListener("click", toggleLearn);
   document.getElementById("next-btn").addEventListener("click", goNext);
@@ -595,8 +602,8 @@ function confirmChoice() {
   updateStats();
   lockChoices();
 
-  var check = document.getElementById("check-btn");
-  if (check) check.hidden = true;
+  var actions = document.getElementById("action-row");
+  if (actions) actions.hidden = true;
   if (note) {
     note.classList.remove("form-error");
     note.textContent = "Press Enter for the next question.";
@@ -657,8 +664,25 @@ function goNext() {
   renderPlay();
 }
 
+/* Leave this question unanswered. Score, streak, and the challenge clock stay as they are. */
+function skipQuestion() {
+  if (state.screen !== "play" || state.graded) return;
+  state.setSkipped += 1;
+  if (state.index + 1 >= state.deck.length) {
+    renderDone();
+    return;
+  }
+  state.index += 1;
+  renderPlay();
+}
+
 function renderDone() {
-  stopChallengeClock(false);
+  if (state.mode === "challenge" && state.challengeMs == null) {
+    stopChallengeClock(true);
+    recordChallengeResult();
+  } else {
+    stopChallengeClock(false);
+  }
   state.screen = "done";
   var challenge = state.mode === "challenge";
   var topic = topicById(state.topicId);
@@ -669,6 +693,7 @@ function renderDone() {
       '<p class="eyebrow" id="done-kicker"></p>' +
       '<h2 id="done-heading">Set complete</h2>' +
       '<p class="lede" id="done-copy"></p>' +
+      '<p class="skip-count" id="done-skipped" hidden></p>' +
       '<p class="time-result" id="done-time" hidden></p>' +
       '<div class="tool-row">' +
         '<button type="button" class="primary" id="again-btn">Practice again</button>' +
@@ -680,8 +705,9 @@ function renderDone() {
   if (state.topicId === "gmat") setLabel = "GMAT quant";
   if (challenge) {
     document.getElementById("done-heading").textContent = "Challenge complete";
-    document.getElementById("done-copy").textContent =
-      "You got " + state.setCorrect + " of " + state.setAnswered + " correct.";
+    document.getElementById("done-copy").textContent = state.setAnswered === 0
+      ? "You did not answer any questions."
+      : "You got " + state.setCorrect + " of " + state.setAnswered + " correct.";
     var timeEl = document.getElementById("done-time");
     timeEl.hidden = false;
     var timeText = "Total time " + formatDuration(state.challengeMs) + ".";
@@ -692,8 +718,15 @@ function renderDone() {
     timeEl.textContent = timeText;
     document.getElementById("again-btn").textContent = "New challenge";
   } else {
-    document.getElementById("done-copy").textContent =
-      "You got " + state.setCorrect + " of " + state.setAnswered + " correct in this " + setLabel + " set.";
+    document.getElementById("done-copy").textContent = state.setAnswered === 0
+      ? "You did not answer any questions in this " + setLabel + " set."
+      : "You got " + state.setCorrect + " of " + state.setAnswered + " correct in this " + setLabel + " set.";
+  }
+  if (state.setSkipped > 0) {
+    var skippedEl = document.getElementById("done-skipped");
+    skippedEl.hidden = false;
+    skippedEl.textContent = "Skipped " + state.setSkipped +
+      (state.setSkipped === 1 ? " question." : " questions.");
   }
   document.getElementById("again-btn").addEventListener("click", function () {
     if (state.mode === "challenge") startChallenge();
@@ -733,13 +766,13 @@ function onKeyDown(event) {
 
   if (state.graded) {
     if (tag === "A") return;
-    if (tag === "BUTTON" && (active.id === "hint-btn" || active.id === "learn-btn")) return;
+    if (tag === "BUTTON" && (active.id === "hint-btn" || active.id === "learn-btn" || active.id === "skip-btn")) return;
     event.preventDefault();
     goNext();
     return;
   }
 
-  if (tag === "BUTTON" && (active.id === "hint-btn" || active.id === "learn-btn")) return;
+  if (tag === "BUTTON" && (active.id === "hint-btn" || active.id === "learn-btn" || active.id === "skip-btn")) return;
   if (active && active.id === "check-btn") return;
 
   if (active && active.classList && active.classList.contains("choice")) {
