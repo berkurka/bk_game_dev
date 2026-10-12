@@ -310,7 +310,12 @@ h2 {
   cursor: default;
 }
 
-#check-btn { margin-top: 12px; }
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
 
 .primary, .ghost {
   min-height: 48px;
@@ -449,6 +454,12 @@ h2 {
 
 #next-btn { margin-top: 12px; }
 
+.skip-count {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .done .eyebrow { margin-bottom: 6px; }
 
 .time-result {
@@ -506,6 +517,7 @@ footer .credit a {
 }
 
 @media (max-width: 520px) {
+  .action-row { flex-direction: column; align-items: stretch; }
   .primary, .ghost { width: 100%; }
   h1 { font-size: 1.6rem; }
 }
